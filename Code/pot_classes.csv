@@ -11,7 +11,7 @@ flask,"cup,c",cup_kantharos
 jug,"cup,little,master,band","krater,column"
 kalathos,"cup,little,master,lip","krater,volute"
 kyathos,"cup,mastoid",loutrophoros
-lekythos,"cup,athenian",
+lekythos,"cup,athenian","amphoriskos,east,aegean,asia,minor"
 lydion,"cup,siana",
 mug,"cup,skyphos",
 oinochoe,"cup,stemless",
@@ -22,3 +22,8 @@ plemochoe,"krater,calyx",
 pyxis,lebes,
 tankard,lekanis,
 vase,stamnos,
+ring,pithos,
+plate,,
+"hydria,east,aegean,asia,minor",,
+jar,,
+"hydria,athenian,protogeometric",,
