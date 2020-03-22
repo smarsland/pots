@@ -212,7 +212,7 @@ unlist and make into a single data frame.
 s5<- do.call(rbind, s3)
 ``````
 We will make vases by ordering the simulated values by timestep, targetvariable and value
-and then we will make 500 virtual vases by gluing together the variables from each run and timestep.
+and then we will make virtual vases by gluing together the variables from each run and timestep.
 ```````{r}
 s5<-s5%>%
 arrange(run, timestep, targetvariable) 
@@ -272,7 +272,7 @@ geom_path(data=check, aes(x=x, y=y, colour=as.factor(virtualvase)), alpha=1, siz
 theme(aspect.ratio = 1)
 `````
 
-get the profile of the original average Mantamados vase
+get the average profile of the original Mantamados vases (just the large ones)
 
 `````{r}
 org<-a2%>%
@@ -326,7 +326,7 @@ comb<-rbind(left, right)
 comb<-comb%>%
   arrange(run, timestep, order)
 ``````
-sample
+sample several time steps from a random set of 5 runs for a nice plot
 ````{r}
 timestepseq<-c(0, 10,25,50,100, 250,500)
 timestepseq
