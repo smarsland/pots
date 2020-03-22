@@ -33,7 +33,7 @@ This looks at the Mantamados (modern) pots.  The are three classes of pots: smal
 a<-read.table("Mantamados_vases_outlines_norman.txt", header=FALSE, colClasses=c(V1="character"), fill=TRUE)
 `````````
 clean up sort out this data for use in R
-`````{4}
+`````{r}
 a$datatype<-rep(c(rep("nondata",3), 1:200, "vasename"), 25)
 a1<-a%>%
 filter(datatype!="nondata")
