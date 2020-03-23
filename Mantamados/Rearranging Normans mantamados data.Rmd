@@ -1,0 +1,116 @@
+---
+title: "Rearranging Mantamados pot data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+`````{r}
+rm(list=ls())
+``````
+
+`````{r, message=FALSE, warning=FALSE}
+library(readr)
+library(dplyr)
+library(data.table)
+library(stringr)
+library(ggplot2)
+library(zoo)
+library(OneR)
+library(fdasrvf)
+library(ape)
+library(ade4)
+library(adegenet)
+library(mvtnorm)
+`````
+
+#### data
+This looks at the Mantamados (modern) pots.  The are three classes of pots: small, medium and large and several pots of each. The data are in long format.  The vases are not registered, but they have been scaled to have the same area.
+
+`````{r}
+a<-read.table("Mantamados_vases_outlines_norman.txt", header=FALSE, colClasses=c(V1="character"), fill=TRUE)
+`````````
+clean up sort out this data for use in R
+`````{r}
+a$datatype<-rep(c(rep("nondata",3), 1:200, "vasename"), 25)
+a1<-a%>%
+filter(datatype!="nondata")
+vaseids<-a%>%
+filter(datatype=="vasename")
+vaseids1<-vaseids$V1
+vaseids2<-gsub("IMAGE=", "", vaseids1)
+a1$vase_id<-rep(vaseids2, each=201)
+a2<-a1%>%
+filter(datatype!="vasename")
+a2$datatype<-NULL
+names(a2)<-c("x", "y", "id")
+`````
+
+```{r}
+a2$x<-as.numeric(as.character(a2$x))
+a2$y<-as.numeric(as.character(a2$y))
+```````
+plot to look at what we have
+`````{r}
+ggplot(data=a2, aes(x=x, y=y, group=id))+
+#geom_point(size=0.05)+
+geom_polygon(fill=FALSE, size=0.05, colour="black")+
+theme_classic()+
+#guides(colour=FALSE)+
+#scale_colour_manual(values=c(col))+
+scale_x_continuous(limits=c(0,max(a2$y)), breaks=seq(from = 0, to = max(a2$y), by = 100))+
+scale_y_continuous(limits=c(0,max(a2$y)), breaks=seq(from = 0, to = max(a2$y), by = 100))+
+facet_wrap(~id, ncol=5)+
+theme(aspect.ratio=1)+
+theme(strip.text.x = element_text(size = 5))
+```````
+the points are already well ordered. but let's make the ordering explicit
+
+`````{r}
+a2<-a2%>%
+group_by(id)%>%
+mutate(pointorder = row_number())
+````````
+add metadata
+`````{r}
+b<-read.csv("Modern_pots_09122019.csv")
+`````
+
+`````{r}
+a3<-merge(a2, b, by.x="id", by.y="id")
+write.csv(a3, "mantamados_normandata_closed_raw.csv", row.names=FALSE)
+`````
+
+
+
+find the centre of each vase
+`````{r}
+a3<-a3%>%
+group_by(id)%>%
+mutate(minx=min(x), maxx=max(x), centrex=(maxx-minx)/2+minx)
+
+left<-a3%>%
+filter(x<=centrex)%>%
+arrange(id, pointorder)
+``````
+
+`````{r}
+ggplot(data=left, aes(x=x, y=y, group=id, fill=as.factor(shape_specific)))+
+#geom_point(size=0.1)+
+geom_polygon()+
+theme_classic()+
+#guides(colour=FALSE)+
+#scale_colour_manual(values=c(col))+
+scale_x_continuous(limits=c(0,max(a2$y)), breaks=seq(from = 0, to = max(a2$y), by = 200))+
+scale_y_continuous(limits=c(0,max(a2$y)), breaks=seq(from = 0, to = max(a2$y), by = 200))+
+facet_wrap(~id, ncol=5)+
+theme(aspect.ratio=1)+
+theme(strip.text.x = element_text(size = 5))
+```````
+
+`````{r}
+write.csv(left, "mantamados_normandata_open_raw.csv", row.names=FALSE)
+```````
+

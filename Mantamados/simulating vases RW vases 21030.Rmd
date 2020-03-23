@@ -1,0 +1,359 @@
+---
+title: "Random walk simulations based on PCA"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+`````{r}
+rm(list=ls())
+``````
+
+`````{r, message=FALSE, warning=FALSE}
+library(readr)
+library(dplyr)
+library(data.table)
+library(stringr)
+library(ggplot2)
+library(zoo)
+library(OneR)
+library(fdasrvf)
+library(ape)
+library(ade4)
+library(adegenet)
+library(mvtnorm)
+library(Momocs)
+library(gplots)
+library(tidyr)
+`````
+
+#### data
+Here we have Norman MacLeod's data on the mantamados pots. We are going to use the large class as the basis for a simulation. We start with the closed data which have been scaled, smoothed and centred
+
+`````{r}
+a<-read.csv("mantamados_normandata_closed_scaled_centred_smoothed.csv", header=TRUE)
+b<-read.csv("Modern_pots_09122019.csv", header=TRUE)
+a1<-merge(a, b, by="id")
+a1<-a1%>%
+  filter(shape_specific=="large")%>%
+  select("id", "x", "y")
+`````````
+plot to check what they look like
+```{r}
+ggplot()+
+geom_point(data=a1, aes(x=x, y=y, colour=as.factor(id)), alpha=1, size=0.1)+  
+geom_path(data=a1, aes(x=x, y=y, colour=as.factor(id)), alpha=1, size=0.1)+
+#geom_vline(data=a11, aes(xintercept = centrex, colour=as.factor(id)), size=0.1)+
+ theme_classic()+
+ylim(-2,2)+
+xlim(-2,2)+
+theme(aspect.ratio = 1)
+`````
+
+#### simplify the vase shapes
+
+The contours have already been size standardized. But we need to simplify them, so that across vases there is a standard set of y values for which there is a unique x value. So, we are going to pool the y values into "bins"
+
+get the left hand side of the vases
+````{r}
+a1<-a1%>%
+filter(x<=0)
+`````
+check how many values each vase has
+```````{r}
+check<-a1%>%
+group_by(id)%>%
+summarize(N_values=length(id))
+check
+````````
+all have 99 or 100 values. After some experimentation, they can be reduced to 70 breaks with no NAs
+````{r}
+a1$ybin<-cut(a1$y, breaks=70, labels=FALSE, include.lowest = TRUE)
+```````
+summarize the x values across those bins by getting their medians
+`````{r}
+a2<-a1%>%
+group_by(id,ybin)%>%
+summarize(x=median(x))%>%
+ungroup()         
+a2.1<-a1%>%
+group_by(ybin)%>%
+summarize(y=median(y))
+a2<-merge(a2, a2.1, by="ybin")
+`````
+plot to check
+```{r}
+ggplot()+
+geom_point(data=a2, aes(x=x, y=y, colour=as.factor(id)), alpha=1, size=0.1)+  
+geom_path(data=a2, aes(x=x, y=y, colour=as.factor(id)), alpha=1, size=0.1)+
+#geom_vline(data=a11, aes(xintercept = centrex, colour=as.factor(id)), size=0.1)+
+ theme_classic()+
+ylim(-2,2)+
+xlim(-2,2)+
+theme(aspect.ratio = 1)
+`````
+cast the data 
+`````{r}
+a3<-a2%>%
+pivot_wider(id_cols = id, names_from = y, values_from =x)
+write.csv(a3, "check.csv")
+```````
+
+
+#### PCA
+do a PCA
+`````{r}
+a3<-as.data.frame(a3)
+rownames(a3)<-a3$id
+a3$id<-NULL
+p1<- prcomp(a3, center = TRUE)
+``````
+look at the variance explained by each PC
+```````{r}
+summary(p1)
+````````
+PC1:4 explain >92% of the variance of the large Mantamados vases.
+
+Figure out how to get the original data back:
+
+our eigenvalues are in this matrix
+``````{r}
+p2<-p1$x
+```````
+our eigenvectors (the loadings) on each variable are in this matrix
+``````{r}
+p3<-p1$rotation
+```````
+the means are in this matrix
+``````{r}
+p4<-p1$center
+````````
+to get the original data, we multiply the tranposed  eigenvalues and eigenvectors and add the means of the variables
+`````````{r}
+p5<-orig<-t(t(p2 %*% t(p3)) + p4)
+p5<-as.data.table(p5)
+p6<-p5%>%
+  pivot_longer(everything(), names_to = "y", values_to = "x")%>%
+  arrange(x)
+a2<-a2%>%
+  arrange(x)
+plot(p6$x, a2$x)
+```````
+so we get the original data back as long as we do not scale the data. 
+
+now get the COV of the PCs for simulation.  The COV should be zero. 
+``````{r}
+p5<-cov(p2)
+heatmap.2(p5, Rowv=NA, Colv=NA, tracecol=NA, dendrogram="none")
+```````
+that looks good: variance>0 but covariance~0
+
+get the mean eigenvalues of the vases. These will be starting point for our simulation.
+``````{r}
+p6<-colMeans(p2, na.rm = FALSE, dims = 1)
+p6<-as.data.frame(p6)
+names(p6)<-c("eigenvalue")
+p6$PC<-rownames(p6)
+p6
+````````
+
+OK: they're zero. So, our simulation starts a with a vector of means=0; and covs=0. All that goes into them are the variances which determine the step size. This does simplify it. 
+
+#### Random Walks
+
+Now we are going to go on a RW in PC space.  The implementation is for a multivariate RW and takes the covariance matrix as an input; this is uncessarily complicated since the covs=0. But we have it and so we'll use it. 
+
+the covariance matrix. We'll only use the first 4 PCs
+``````{r}
+s1<-p5
+s1<-s1[,c(1:4)]
+s1<-s1[c(1:4),]
+colnames(s1)<-c(1:4)
+rownames(s1)<-c(1:4)
+`````````
+
+```````{r}
+timesteps<-1000  #number of time steps
+simnum<-100 # number of runs of the simulation
+variables<-4 # number of variables
+means<-rep(0,variables) #means of the variables
+````````
+get a list of variables to loop across
+``````{r}
+s2<-p6[c(1:4),]
+s2$PC<-as.numeric(1:4)
+targetvars<-as.numeric(s2$PC)
+````````````
+create a list to with the right number of variables.  In each run, this list will get populated by the dataframes.
+````{r}
+s3<-vector("list", length(targetvars))
+```````
+
+```````{r}
+for (v in targetvars){
+  print(v)
+simit=function(i){rmvnorm(timesteps, mean=means, sigma=s1)}# This is the simulation function
+sim1=sapply(1:simnum,function(x)simit(x)[,v]) #change to change variable
+simat=t(sim1)
+cumat=sapply(1:simnum,function(x)cumsum(simat[x,])) # this is the cum sum that gives your the RW
+cumat_t<-t(cumat) 
+const=matrix(c(rep(as.numeric(s2[v,1]),timesteps*simnum)),byrow=T,nrow=simnum)# the start value
+SimulatedPaths<-cumat_t+const #the matrix of simulated paths
+s4<-reshape2::melt(SimulatedPaths)
+names(s4)<-c("run", "timestep", "value")
+s4$targetvariable<-v
+s3[[v]]<-s4
+}
+````````
+unlist and make into a single data frame.
+```{r}
+s5<- do.call(rbind, s3)
+``````
+We will make vases by ordering the simulated values by timestep, targetvariable and value
+and then we will make virtual vases by gluing together the variables from each run and timestep.
+```````{r}
+s5<-s5%>%
+arrange(run, timestep, targetvariable) 
+s5$virtualvase<-paste(s5$run, s5$timestep, sep="_")
+a11<-s5%>%
+ pivot_wider(id_cols = c(run,timestep,virtualvase), names_from = targetvariable, values_from =value) 
+```````
+now project these vases back into the original variable space. Instead of p2, which contains the original vases, we use a11 which contains the simulated vases
+
+Remember: p3 contains the eigenvectors. We only need the first 4.
+          p4 contains the means
+
+```````{r}
+a12<-as.matrix(a11[c(4:7)])
+a13<-t(t(a12 %*% t(p3[,1:4])) + p4)
+a14<-a11[c(1:3)]
+a15<-cbind(a14, a13)
+#a16<-reshape2::melt(a15, id.vars=c("run", "timestep", "virtualvase"))
+a16<-a15%>%
+  pivot_longer(cols = "-1.33914752010434":"1.41852897863538", names_to = "y", values_to = "x")
+names(a16)<-c("run", "timestep", "virtualvase", "y", "x")
+a16$x<-as.numeric(as.character(a16$x))
+a16$y<-as.numeric(as.character(a16$y))
+``````
+plot to check
+```{r}
+check<-a16%>%
+  filter(virtualvase=="1_1" |virtualvase=="2_1"|virtualvase=="3_1"|
+           virtualvase=="1_1000" |virtualvase=="2_1000"|virtualvase=="3_1000")
+ggplot()+
+geom_point(data=check, aes(x=x, y=y, colour=as.factor(virtualvase)), alpha=1, size=1)+  
+geom_path(data=check, aes(x=x, y=y, colour=as.factor(virtualvase)), alpha=1, size=1)+
+ theme_classic()+
+#ylim(-2,2)+
+#xlim(-2,2)+
+theme(aspect.ratio = 1)
+`````
+centre each vase so that the maximum is 0 and add -0.01 so that we have nice looking vases when we double up
+```````{r}
+a18<-a16%>%
+group_by(virtualvase)%>%
+mutate(maxx=max(x))
+a18$x<-a18$x-a18$maxx
+a18$x<-a18$x+-0.01
+```````
+plot to check
+```{r}
+check<-a18%>%
+  filter(virtualvase=="1_1" |virtualvase=="2_1"|virtualvase=="3_1"|
+           virtualvase=="1_1000" |virtualvase=="2_1000"|virtualvase=="3_1000")
+ggplot()+
+geom_point(data=check, aes(x=x, y=y, colour=as.factor(virtualvase)), alpha=1, size=1)+  
+geom_path(data=check, aes(x=x, y=y, colour=as.factor(virtualvase)), alpha=1, size=1)+
+ theme_classic()+
+#ylim(-2,2)+
+#xlim(-2,2)+
+theme(aspect.ratio = 1)
+`````
+
+get the average profile of the original Mantamados vases (just the large ones)
+
+`````{r}
+org<-a2%>%
+group_by(y)%>%
+summarize(x=median(x))%>%
+mutate(maxx=max(x))
+org$x<-org$x-org$maxx
+org$y<-as.numeric(as.character(org$y))
+org$x<-as.numeric(as.character(org$x))
+ggplot()+
+geom_point(data=org, aes(x=x, y=y), alpha=1, size=1)+  
+geom_path(data=org, aes(x=x, y=y), alpha=1, size=1)+
+ theme_classic()+
+ylim(-2,2)+
+xlim(-2,2)+
+theme(aspect.ratio = 1)
+`````
+
+`````````{r}
+org$run<-0
+org$timestep<-0
+org$virtualvase<-"0_0"
+org<-org[c("run", "timestep", "virtualvase", "y", "x")]
+org$x<-org$x+-0.01
+a18$maxx<-NULL
+a18$run<-as.numeric(as.character(a18$run))
+a18$timestep<-as.numeric(as.character(a18$timestep))
+org<-as.data.frame(org)
+a18<-as.data.frame(a18)
+a21<-rbind(org, a18)
+`````````
+now close the simulated vases
+get the left
+```````{r}
+left<-a21%>%
+arrange(run, timestep, y)  
+#left$x<-left$x-1
+left$order<-rep(1:70, 100001)
+``````
+get the right
+``````{r}
+right<-left
+right$x<-right$x*-1
+right<-right%>%
+  arrange(run, timestep, desc(y))
+right$order<-rep(71:140, 100001)
+`````
+combine
+````{r}
+comb<-rbind(left, right)
+comb<-comb%>%
+  arrange(run, timestep, order)
+``````
+sample several time steps from a random set of 5 runs for a nice plot
+````{r}
+timestepseq<-c(0, 10,25,50,100, 250,500)
+timestepseq
+runs<-c(0, sample(unique(comb$run),5))
+`````
+
+`````{r}
+comb$timestep<-as.numeric(comb$timestep)
+c1<-comb%>%
+filter(run %in% runs & timestep %in% timestepseq)
+unique(c1$timestep)
+````
+plot
+````{r}
+min<-floor(max(c1$x)+1)*-1
+max<-floor(max(c1$x)+1)
+ggplot(data=c1, aes(x=x, y=y))+
+#geom_point(colour="red", size=0.1)+
+geom_polygon(fill="salmon4")+
+scale_y_continuous(limits=c(min,max))+
+scale_x_continuous(limits=c(min,max))+
+facet_grid(run~timestep)+
+theme_classic()+
+theme(aspect.ratio = 1)
+````
+```````{r}
+write.csv(a21, "PC_RW_large_Mantamados_open.csv", row.names=FALSE)
+write.csv(comb, "PC_RW_large_Mantamados_closed.csv", row.names=FALSE)
+```````
+
