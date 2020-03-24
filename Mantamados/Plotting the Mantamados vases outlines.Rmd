@@ -1,0 +1,44 @@
+---
+title: "Plotting the Mantamados vase outlines"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+`````{r}
+rm(list=ls())
+``````
+
+`````{r, message=FALSE, warning=FALSE}
+library(dplyr)
+library(data.table)
+library(ggplot2)
+`````
+
+#### data
+Here we have Norman MacLeod's data on the mantamados pots. We have scaled, centred and lightly smoothed the data. Now we are going to make a pretty plot
+
+`````{r}
+a<-read.csv("mantamados_normandata_closed_scaled_centred_smoothed.csv", header=TRUE)
+b<-read.csv("Modern_pots_09122019.csv")
+b<-b%>%
+  select("id", "shape_specific")
+a1<-merge(a,b, by="id")
+`````````
+
+plot to check what they look like
+```{r}
+library(wesanderson)
+pal <- wes_palette("Cavalcanti1", 3, type = "continuous")
+ggplot()+
+#geom_point(data=a1, aes(x=x, y=y, colour=as.factor(shape_specific)), alpha=1, size=0.1)+  
+geom_path(data=a1, aes(x=x, y=y, colour=as.factor(shape_specific)), alpha=0.5, size=0.5)+
+ theme_classic()+
+scale_color_manual(values = c(pal))+
+scale_fill_manual(values = c(pal))+
+scale_x_continuous(limits=c(-2,2), breaks=seq(from=-2, to=2, by=0.5))+
+scale_y_continuous(limits=c(-2,2), breaks=seq(from=-2, to=2, by=0.5))+
+theme(aspect.ratio = 1)
+`````
