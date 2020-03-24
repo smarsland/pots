@@ -1,0 +1,100 @@
+---
+title: "Among-series variance of RW vase eigenscores"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+---
+
+Estimating the variance of individual variables, by interval of RW vases. Here we are going to estimate the variance of each variable and series one at a time. We estimate the variance of the variable at time point x relative to start.
+`````{r}
+library(Momocs)
+library(data.table)
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+library(matrixStats)
+library(tidyr)
+library(broom)
+```````
+This estimates the variance among runs for each eigen value
+
+read data and put in Momocs format
+``````{r}
+wide<-fread("PC_RW_large_Mantamados_eigenscores.csv")
+````````
+reshape data
+
+````{r}
+l<-wide%>%
+pivot_longer(col=c("1":"4"), names_to="PC", values_to="eigenvalue")
+l1<-l%>%
+  pivot_wider(id_cols=c(timestep, PC), names_from=run, values_from=eigenvalue)%>%
+  arrange(PC, timestep)
+`````
+
+```{r}
+l2<-as.matrix(as.data.frame(l1[c(3:102)]))
+l1$variance<-rowVars(l2, dim=c(4000, 100), na.rm=TRUE)
+l3<-l1%>%
+  select(timestep, PC, variance)
+``````
+plot
+````{r}
+ggplot()+
+geom_point(data=l3, aes(x=timestep, y=variance, colour=as.factor(PC)), size=0.5, alpha=0.5)+
+#guides(colour=FALSE)+
+geom_smooth(data=l3, aes(x=timestep, y=variance, colour=as.factor(PC)), se=FALSE, method="lm", formula=y~0+x, size=0.5)+
+theme_classic()+
+theme(aspect.ratio=1)
+```````
+do regressions on them all
+`````{r}
+m1<-l3 %>% group_by(PC) %>%
+  do(fit = lm(variance ~ 0+timestep, data = .))
+coefs<-tidy(m1, fit)%>%
+filter(term=="timestep")
+coefs
+`````
+rsq
+````{r}
+rsq<-glance(m1, fit)
+``````
+get the average rsquared
+````{r}
+mean(rsq$adj.r.squared)
+```````
+get the predictions
+`````{r}
+pred<-augment(m1, fit)%>%
+select(PC, timestep, .fitted)%>%
+  arrange(PC, timestep)
+```````
+order for plotting
+`````{r}
+o<-coefs%>%
+select(PC,estimate)%>%
+arrange(desc(estimate))
+o$order<-1:nrow(o)
+l3<-merge(l3, o, by="PC")
+pred<-merge(pred, o, by="PC")
+l3$PC<- reorder(l3$PC, l3$order)
+pred$PC<- reorder(pred$PC, pred$order)
+levels(pred$PC)
+`````
+
+````{r}
+library(wesanderson)
+pal <- wes_palette("GrandBudapest1", 4, type = "continuous")
+ggplot()+
+geom_point(data=l3, aes(x=timestep, y=variance, colour=as.factor(PC)), size=0.5, alpha=0.5)+
+#guides(colour=FALSE)+
+geom_line(data=pred, aes(x=timestep, y=.fitted, colour=as.factor(PC)))+
+scale_color_manual(values = c(pal))+
+scale_fill_manual(values = c(pal))+
+scale_x_continuous(breaks=seq(from=0, to=1000, by=250))+
+scale_y_continuous(breaks=seq(from=0, to=14, by=2))+
+theme_classic()+
+theme(aspect.ratio=1)
+```````  
