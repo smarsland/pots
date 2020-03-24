@@ -1,0 +1,189 @@
+---
+title: "Among-series Fourier d distance"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+---
+
+This analyses the open contours of the RW simulated vases using Fourier analysis in Momocs
+`````{r}
+library(Momocs)
+library(data.table)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```````
+### data
+read data 
+``````{r}
+long<-fread("PC_RW_large_Mantamados_open.csv")
+`````
+since we are going to look at among run variance, remove the start vase
+`````{r}
+long<-long%>%
+  filter(run!=0)
+```````
+look at the profile of one vase
+```{r}
+check<-long%>%
+  filter(timestep==1000, run==1)
+ggplot()+
+geom_path(data=check, aes(x=x, y=y))+
+xlim(-2,2)+
+ylim(-2,2)+
+  theme_classic()+
+  theme(aspect.ratio=1)
+`````
+### pre processing
+to make the open contours most comparable to the closed contours, we want to have the top and the bottom of the virtual vases reach to the maximum x value (so that they are genuinely half a vase). This is always -0.01
+````{r}
+long1<-long%>%
+group_by(run, timestep)%>%
+summarize(maxx=max(x))
+head(long1)
+``````
+the top and bottom y values are
+````{r}
+long2<-long%>%
+group_by(run, timestep)%>%
+summarize(maxy=max(y), miny=min(y))
+head(long2)
+`````
+adjust
+````{r}
+long$x<-ifelse(long$y==-1.339148| long$y==1.418529, -0.01, long$x)
+``````
+check
+```{r}
+check<-long%>%
+  filter(timestep==1000, run==1)
+ggplot()+
+geom_path(data=check, aes(x=x, y=y))+
+xlim(-2,2)+
+ylim(-2,2)+
+  theme_classic()+
+  theme(aspect.ratio=1)
+`````
+### Momocs analysis
+
+Put in Momocs format. Split the dataframe into matrixes of individual vases.
+````{r}
+long<-long[,c("x","y","timestep","run")]
+a<-split(long,list(long$timestep,long$run),drop=TRUE)
+a<-lapply(a,function(x){as.matrix(x[,c(1,2)])})
+a<-Opn(a) #here we use Opn since we have open outlines of half vases
+````
+Centre and align the curves
+
+coo_center returns a shape centered on the origin.
+````{r}
+a1<-a%>%coo_center
+`````
+Aligns the coordinates along their longer axis using var-cov matrix and eigen values. There are other aligning options: coo_aligncalliper, coo_alignminradius, coo_align
+`````{r}
+a2<-a1%>%coo_align
+```````
+examine what this does
+````{r}
+c1_a<-as.data.frame(a[1])
+c1_a$transform<-"1raw"
+c1_a1<-as.data.frame(a1[1])
+c1_a1$transform<-"2centred"
+c1_a2<-as.data.frame(a2[1])
+names(c1_a2)<-c("x","y")
+c1_a2$transform<-"3aligned"
+c1<-rbind(c1_a, c1_a1, c1_a2)
+c1$vase<-"vase1"
+c500_a<-as.data.frame(a[500])
+c500_a$transform<-"1raw"
+c500_a1<-as.data.frame(a1[500])
+c500_a1$transform<-"2centred"
+c500_a2<-as.data.frame(a2[500])
+names(c500_a2)<-c("x","y")
+c500_a2$transform<-"3aligned"
+c500<-rbind(c500_a, c500_a1, c500_a2)
+c500$vase<-"vase500"
+c<-rbind(c1, c500)
+`````
+
+```{r}
+ggplot()+
+geom_path(data=c, aes(x=x, y=y, colour=as.factor(vase)))+
+facet_wrap(~transform)+
+xlim(-2,2)+
+ylim(-2,2)+
+  theme_classic()+
+  theme(aspect.ratio=1)
+`````
+The vases were already aligned on their right. I don't think that they need any more alignment, or if they do, they only need centering.  We will use the raw data.
+
+Fourier analysis. This calculates discrete cosine fourier transforms. Suitable for open curves. We extract the first 10 harmonics.
+````{r}
+a.f<-dfourier(a,nb.h = 10)  # 10 harmonics d-fourier
+``````
+There are A and B harmonic coeffients. Which should be used? Both? The amplitudes of the cosine waves are held in the variables: a1, a2, a3, a3, etc., while the amplitudes of the sine waves are held in: b1, b2, b3, b4, and so on. In other words, the "a" and "b" coefficients are the real and imaginary parts of the frequency spectrum, respectively. I think use them all.
+
+do a PCA on just the a coefficients
+``````{r}
+a.p<-as_df(a.f)
+a.pca<- prcomp(a.p, scale=TRUE)
+res.pca<-a.pca$x
+res.pca<-as.data.frame(res.pca)
+```````
+get the row labels
+````{r}
+wide<-pivot_wider(long,names_from = y, values_from=x)
+res.pca$run<-wide$run
+res.pca$timestep<-wide$timestep
+res.pca$virtualvase<-paste(res.pca$run, res.pca$timestep, sep="_")
+`````
+a function to get the distance matrix for X PCS
+`````{r}
+distancematrix<- function(x){
+d1<-x[,c(1:20)]
+d2<-as.matrix(d1)
+d3<-dist(d2, method="euclidean")
+d4<-as.matrix(d3)
+d5<-as.data.frame(d4)
+return(d5)
+}
+`````
+get mean distance by timestep
+`````{r}
+timestep_dist<-res.pca%>%
+group_by(timestep)%>%
+do(d1=distancematrix(.))%>%
+summarize(q50=quantile(as.matrix(d1), 0.5), q05=quantile(as.matrix(d1), 0.05), q95=quantile(as.matrix(d1), 0.95))
+timestep_dist$timestep<-1:1000
+`````
+check that the distance matrix estimation function is working correctly
+`````{r}
+check<-timestepdist<-res.pca%>%
+filter(timestep==1000)%>%
+select(PC1:PC20)
+distance<-dist(as.matrix(check), method="euclidean")
+distance<-as.matrix(distance)
+q50<-quantile(distance,0.5)
+q50
+tail(timestep_dist)
+```````
+it works
+````{r}
+m1<-lm(q50~0+timestep, data=timestep_dist)
+timestep_dist$fit<-predict(m1)
+summary(m1)
+#plot(m1)
+``````
+plot
+````{r}
+ggplot()+
+geom_ribbon(data=timestep_dist, aes(ymin=q05, ymax=q95, x=timestep), fill="grey50", alpha=0.5)+
+geom_point(data=timestep_dist, aes(x=timestep, y=q50), colour="grey50", size=1)+
+guides(colour=FALSE)+
+geom_line(data=timestep_dist, aes(x=timestep, y=fit))+
+labs(x = "time step", y = "distance")+
+  theme_classic()+
+  theme(aspect.ratio=1)
+```````
