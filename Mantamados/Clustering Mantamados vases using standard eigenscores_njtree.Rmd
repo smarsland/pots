@@ -1,0 +1,59 @@
+---
+title: "Clustering Norman's standard eigenscores"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+`````{r}
+rm(list=ls())
+``````
+
+`````{r, message=FALSE, warning=FALSE}
+library(dplyr)
+library(data.table)
+library(ggplot2)
+library(ape)
+library(tidytree)
+library(ggtree)
+library(wesanderson)
+`````
+
+#### data
+Here we have Norman's standard eigenscore data for the Mantamados data. 
+
+`````{r}
+a<-read.csv("Mantamados_standard_eigenscores_Norman.csv", header=TRUE)
+`````````
+get distance matrix, cluster and plot using ggtee
+`````{r}
+rownames(a)<-paste(a$Group, a$Object, sep="_")
+a1<-a%>%
+select(PC.1:PC.7)%>%
+as.matrix()%>%
+dist(method="euclidean")%>%
+nj()
+`````
+make labels. We have turn the hclust object into a tibble, change the labels, and then turn it back into a phylo object and then a tibble and then a ggtree object
+````{r}
+a1<-a1%>%
+as.phylo()%>%
+as_tibble()
+specific_shape<-c(rep("small", 8), rep("large", 11), rep("medium", 6), rep("NA", 23))
+a1$label<-specific_shape
+a1<-a1%>%
+as.phylo()%>%
+as_tibble()%>%
+as.treedata()
+``````
+plot
+`````{r}
+pal<- wes_palette("Zissou1", 3, type = "continuous")
+ggtree(a1,layout = "fan")+
+geom_tippoint(aes(color = label),size=2)+
+#geom_tiplab(geom="label", offset=0.3, hjust=.5, size=2)+
+scale_color_manual(values = pal)
+`````
+

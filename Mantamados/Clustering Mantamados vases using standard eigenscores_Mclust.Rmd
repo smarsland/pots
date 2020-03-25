@@ -1,0 +1,86 @@
+---
+title: "Clustering Norman's standard eigenscores using Mclust"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+`````{r}
+rm(list=ls())
+``````
+
+`````{r, message=FALSE, warning=FALSE}
+library(dplyr)
+library(data.table)
+library(ggplot2)
+library(ape)
+library(tidytree)
+library(ggtree)
+library(wesanderson)
+library(mclust)
+library(ggpubr)
+library(TSclust)
+library(cluster)
+`````
+
+#### data
+Here we have Norman's standard eigenscore data for the Mantamados data. 
+
+`````{r}
+a<-read.csv("Mantamados_standard_eigenscores_Norman.csv", header=TRUE)
+a$shape_specific<-ifelse(a$Group=="Small", "s", ifelse(a$Group=="Medium", "m", "l"))
+`````````
+cluster using Mclust
+`````{r}
+a1<-a[c(3:9)]
+m<-mclustBIC(a1, G=1:20)
+summary(m)
+plot(m)
+``````
+it likes 18 groups. 
+`````{r}
+a1<-a[c(3:9)]
+m<-mclustBIC(a1, G=3)
+summary(m)
+plot(m)
+``````
+look at model in detail
+`````{r}
+mod2<-Mclust(a1, "EEV", G=3)
+summary(mod2)
+moddr<-MclustDR(mod2)
+summary(moddr)
+plot(moddr, what="boundaries", ngrid=200)
+a$cluster<-mod2$classification
+``````
+examine clusters with labels
+```{r}
+check<-a%>%
+select(Group, shape_specific, cluster)
+check
+`````
+evaluate cluster accuracy
+`````{r}
+cluster.evaluation(a$Group,a$cluster)
+`````
+plot
+`````{r}
+a<-a%>%
+arrange(Group, PC.1)
+symbols<-c("c1", "c2", "c3")
+pal<- wes_palette("Zissou1", 3, type = "continuous")
+ggplot(a, aes(x=PC.1, y=PC.2, colour=as.factor(cluster), fill=as.factor(cluster), label=shape_specific))+
+stat_chull(alpha = 0.5, geom = "polygon", colour=NA)+
+geom_point(size=7)+
+geom_text(colour="white", size=5)+
+scale_colour_manual(values=pal)+
+scale_fill_manual(values=pal)+
+xlab("PC1")+
+ylab("PC2")+
+scale_y_continuous(limits=c(-4,4), breaks=c(seq(from=-4, to=4, by=1)))+
+scale_x_continuous(limits=c(-4,4), breaks=c(seq(from=-4, to=4, by=1)))+
+theme_classic()+
+theme(aspect.ratio = 1)
+`````
